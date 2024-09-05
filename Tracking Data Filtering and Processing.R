@@ -1,6 +1,7 @@
 library(dplyr)
 library(ggplot2)
 library(sf)
+library(geosphere)
 library(rnaturalearth)
 library(tidyr)
 library(purrr)
@@ -13,9 +14,9 @@ library(lubridate)
 # 2. OPENING AND SORTING ALL DATA 
 #    load data downloaded from STDB following data requests
 # 3. FILTERING DATA
-#    3a. plot tracking and colony locations of each species
-#    3b. calculate displacement from the colony for every individual
-# 4. PLOT DATA
+#    3a. plot tracking locations and colonies - one plot per species
+#    3b. calculate and plot the displacement from the colony of all remaining individuals
+#    3c. filtering steps based displacement - to select indviduals that migrate only
 # 5. SUMMARISE DATA
 # 4b. displacement plots of all data - printed as jpgs to folder
 
@@ -89,8 +90,7 @@ for (j in 1:nrow(species)) { # outer loop to select one individual at a time
 #### 3b. calculate and plot the displacement from the colony of all remaining individuals ####
 
 # plotting the displacement of each individual and save to a folder 
-
-# new dataframe with all unique individuals listed
+# create a new dataframe with all unique individuals listed
 individuals <- data.frame(unique(STDB.DL$track_id)) # 2040 individuals - should produce same number of displacement plots in the folder using loop below 
 
 for (j in 1:nrow(individuals)) { # outer loop to select one individual at a time
@@ -121,11 +121,10 @@ for (j in 1:nrow(individuals)) { # outer loop to select one individual at a time
    ggsave(plot = last_plot(), path = "Figures/Displacement plots/extra species", filename=paste("Displacement plot_Bird",ID,".jpg",sep=""), dpi = 200)
  }
 
-
 ##### 3c. filtering steps based displacement - to select indviduals that migrate only ####
 # using displacement to filter datasets for individuals that do migrate. number of time crosses the mid-distance
 
-STDB.DL$disp <- NA
+STDB.DL$disp <- NA # calculate colony displacement
 STDB.DL <- as.data.frame(STDB.DL)
 for (i in 1:nrow(STDB.DL)) {
 
@@ -133,7 +132,7 @@ for (i in 1:nrow(STDB.DL)) {
   print(i)
 }
 
-
+# determine if individuals are migratory based on how many times they cross half the maximum displacement (this will vary with the number of years of tracking data available so calculate seperately for indivduals with <1, 1 to 2, 2 to 3 or > 3 years of data
 # create separate dataframes for individuals with < 12 months of tracking data, between 12 and 24 months, between 24 and 36 months and > 36 months of data
 
 df0.12 <- STDB.DL %>% 
@@ -141,17 +140,14 @@ df0.12 <- STDB.DL %>%
            # as.POSIXct(paste(date_gmt, time_gmt), format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>% 
   group_by(track_id) %>% 
   mutate(duration = ifelse((max(POSIX)- min(POSIX))<=365, "TRUE", "FALSE")) %>% 
-  filter(duration =="TRUE") # %>% # add this extra filter if adding one dataset after already filtered them all
- # filter(dataset_id == "1541") 
-  
+  filter(duration =="TRUE")  
 
 df12.24 <- STDB.DL %>% 
   mutate(POSIX = parse_date_time(paste(date_gmt, time_gmt), c("ymd HMS", "ymd HM"), tz = "UTC")) %>% 
   # as.POSIXct(paste(date_gmt, time_gmt), format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>% 
   group_by(track_id) %>% 
   mutate(duration = ifelse((max(POSIX)- min(POSIX))>365 & (max(POSIX)- min(POSIX)) <= 730, "TRUE", "FALSE")) %>% 
-  filter(duration =="TRUE") #%>%
-  # filter(dataset_id == "1541")
+  filter(duration =="TRUE") 
 
 df24.36 <- STDB.DL %>% 
   mutate(POSIX = parse_date_time(paste(date_gmt, time_gmt), c("ymd HMS", "ymd HM"), tz = "UTC")) %>% 
@@ -175,13 +171,12 @@ df0.12 %>%
   geom_line(aes(POSIX, track_id), lwd = 1)+
   scale_x_datetime(date_breaks = "1 year", date_labels = "%Y")
 
-
 # next find the median displacement for each individual and if bird crosses more than twice in a year remove
 
-
 individuals <- data.frame(unique(df0.12$track_id)) 
-# MIG <- NULL # do not run these two lines after the first dataset as it will override the previoius data
-# NONMIG <- NULL
+ MIG <- NULL # do not run these two lines after the first dataset as it will override the previous data
+ NONMIG <- NULL
+
 # for each dataframe (0-12 months, 12 - 24M, 24- 36M an 36-48 M) repeat the loop, change dataframe in first loop
 # also change the number of crossings (2 per year) at end of outer loop
 
@@ -191,11 +186,9 @@ individuals <- data.frame(unique(df0.12$track_id))
   subset <- df0.12 %>% filter(track_id == ID) # change data frame here for the different number of years
 
 for (i in 1:nrow(subset)) {
-  
-  limit <-  (max(subset$disp) / 2)
+    limit <-  (max(subset$disp) / 2)
   limit2 <- (max(subset$disp) -min(subset$disp)) /2 
-  
-  
+    
   sp <- c(subset$common_name[1], subset$scientific_name[1])
   disp.plot <- ggplot(subset)+
     geom_line(aes(POSIX, disp), lwd = 1.3) +
@@ -225,7 +218,7 @@ subset <- subset[order(subset$POSIX),] # order subset by date
 
   print(j)  
  
-if (num_crossings > 0.1 & num_crossings <=2) {
+if (num_crossings > 0.1 & num_crossings <=2) { # change from 2 crossings per year to 4 for 12 - 24 months, 6 for 24 - 36 months etc.
 
   ggsave(plot = disp.plot, path = "Figures/Displacement plots/extra species/migration" , filename = paste("Displacement plot_Bird",ID,"MIGRATION.jpg",sep=""))
   
@@ -245,13 +238,8 @@ if (num_crossings > 0.1 & num_crossings <=2) {
   
 } # closing outer loop j (selecting one individual at a time from full dataset)
 
-#when only running the above for one or a few new datasets, do bind the dataframe with the larger, sorted mig and non mig dfs. (open these below and call then MIG2 and NONMIG2 to not override the dataframes just sorted)
-# MIG <- rbind(MIG, MIG2)
-# NONMIG <-rbind(NONMIG, NONMIG2)
-
-### 3j. open dataframes with migrating and non-migrating individuals filtered based on displacement plots ####
-write.csv(MIG, "data filtered by migration based on displacement plots_MIGRATION.v4.csv", row.names =  FALSE)
-write.csv(NONMIG, "data filtered by migration based on displacement plots_NONMIGRATION.v4.csv", row.names =  FALSE)
+write.csv(MIG, "data filtered by migration based on displacement plots_MIGRATION.csv", row.names =  FALSE)
+write.csv(NONMIG, "data filtered by migration based on displacement plots_NONMIGRATION.csv", row.names =  FALSE)
 
 MIG <- read.csv("data filtered by migration based on displacement plots_MIGRATION.v4.csv")
 NONMIG <- read.csv("data filtered by migration based on displacement plots_NONMIGRATION.v4.csv")
@@ -268,34 +256,6 @@ missingsp <- anti_join(spNONMIG, spMIG)
 missingsp <- anti_join(spMIG, spNONMIG)
 # 2 species all individuals classed as migratory: Westland Petrel, Mottled Petrel
 
-# check the MacGillivray's Prion, Broad-billed Prion, White-headed Petrel plots
-lostsp <- STDB.DL %>% filter(common_name == "MacGillivray's Prion" | common_name == "Broad-billed Prion" | common_name == "White-headed Petrel") %>% 
-    mutate(POSIX = parse_date_time(paste(date_gmt, time_gmt), c("ymd HMS", "ymd HM"), tz = "UTC"))
-
-length(unique(lostsp$track_id)) # 23 individuals
-lostsp %>% group_by(common_name) %>% count(track_id) %>% print(n = 23) # 8 MacGillivray's prion, 13 broad-billed prion, 2 white-headed petrel
-
-# re generate all displacement plots for the missing species to assess
-individuals <- data.frame(unique(lostsp$track_id))
-
-  ID <- print(individuals[23,])
-  subset <- lostsp %>% filter(track_id == ID) # change data frame here for the different number of years
-  
-  limit <-  (max(subset$disp) / 2)
-  sp <- c(subset$common_name[1], subset$scientific_name[1])
-  
-  ggplot(subset)+
-      geom_line(aes(POSIX, disp), lwd = 1.3) +
-      geom_point(aes(POSIX, disp), colour = "red")+
-      geom_hline(yintercept = limit)+
-      # geom_hline(yintercept = limit2, colour = "blue")+
-      xlab("Date") +
-      ylab("Displacement from colony (km)") +
-      labs(title = "Bird =", subtitle = ID, caption = sp[2])+
-      theme_bw()
-   
-  ggsave(plot = last_plot(), path = "Figures/Displacement plots/lostspecies" , filename = paste("Displacement plot_Bird",ID,"NON-MIGRATION_no individuals from this sp. classified as migratory.jpg",sep=""))
-  
 # check the numbers of individuals for each species within the NONMIG and MIG datasets to see if lots have been removed from one species
   
  countMIG <- MIG %>% 
@@ -309,33 +269,6 @@ individuals <- data.frame(unique(lostsp$track_id))
  ind.counts <- full_join(countMIG, countNONMIG)
    
  write.csv(ind.counts, "Figures/Displacement plots/1. number of individuals per species_sorted into mig and nonmig based on displacement plots_eight new species.v5 with colonies.19062023.csv", row.names =  FALSE)
-# some Pterodoma ultima/ Murphy's petrel have no locations crossing the midpoint and are classified as migrating. 
-# plot these to visualise why
-
-murphy <- MIG %>%  
-  filter(common_name == "Murphy's Petrel")
-  
-# plot to find which individuals actaually migrate
-murphy %>% 
-  filter(
-      # no migration locations
-    # track_id ==  "NonDB_26_NA" | 
-    # migration locations
-    track_id == "NonDB_18_NA" | track_id == "NonDB_19_NA"| track_id == "NonDB_22_NA" |
-    track_id ==  "NonDB_29_NA" | track_id ==  "NonDB_30_NA" | track_id == "NonDB_31_NA"  |
-    track_id ==  "NonDB_23_NA" | track_id == "NonDB_24_NA"  | track_id ==  "NonDB_25_NA"
-    ) %>% 
-  group_by(track_id) %>% 
-  arrange(POSIX) %>% # need to order by date if using lines rather than points
-ggplot() +
-  geom_sf(data = borders) +
-  geom_point(aes(x = longitude, y = latitude))+
-  geom_path(aes(x = longitude, y = latitude, colour = track_id), alpha = 0.5, lwd = 2)+
-  # geom_path(aes(x = longitude, y = latitude, colour = interaction(track_id,stage,sep="-",lex.order=TRUE)), alpha = 0.5, lwd = 2) +
-  geom_point(aes(x = as.numeric(lon_colony), y = as.numeric(lat_colony), fill = colony_name), alpha = 0.5, size = 5,  shape = 23)+
-  xlim(c(-180, -50))+
-  geom_sf(data = borders, fill = NA, colour = "black")+# annotate("text", x = -150, y = 85, label = (paste(ID)))+
-  theme_bw()
 
 #### 3k. visual assessment of displacement plots for select species. Change reclassified non-migratory individuals ####
 
@@ -363,33 +296,6 @@ write.csv(MIG2, "data filtered by migration based on displacement plots_MIGRATIO
 write.csv(NONMIG2, "data filtered by migration based on displacement plots_NONMIGRATION.v7_reclassified eight species.csv", row.names =  FALSE)
 
 
-# merge new eight species with 40 species dataset
-MIG.0 <- read.csv("data filtered by migration based on displacement plots_MIGRATION.v6_reclassified.csv")
-NONMIG.0 <- read.csv("data filtered by migration based on displacement plots_NONMIGRATION.v6_reclassified.csv")
-
-# add extra column to eight new species dataframes
-MIG2 <- MIG2 %>% 
-  mutate(stage = NA, AS = "No") %>% 
-  relocate(stage, .after = equinox) %>% 
-  relocate(AS, .before = disp)
-
-NONMIG2 <- NONMIG2 %>% 
-  mutate(stage = NA, AS = "No") %>% 
-  relocate(stage, .after = equinox) %>% 
-  relocate(AS, .before = disp)
-
-fullMIG <- rbind(MIG.0, MIG2)
-fullNONMIG <- rbind(NONMIG.0, NONMIG2)
-
-
-length(unique(fullNONMIG$track_id)) # number of non-migrating individuals
-length(unique(fullMIG$track_id)) # number of migrating individuals 
-
-length(unique(fullNONMIG$common_name))
-length(unique(fullMIG$common_name))
-
-write.csv(fullMIG, "data filtered by migration based on displacement plots_MIGRATION.v8_reclassified including additional data Jul23.csv", row.names = FALSE)
-write.csv(fullNONMIG, "data filtered by migration based on displacement plots_NONMIGRATION.v8_reclassified including additional data Jul23.csv", row.names = FALSE)
 
 ##### Fully FILTERED DATA - OPEN THESE CSVs ####
 MIG <- read.csv("data filtered by migration based on displacement plots_MIGRATION.v5_reclassified.csv")
@@ -424,163 +330,6 @@ MIG %>%
   summarise(max = max(disp), median = median(disp), Q1 = quantile(disp, .25), Q3 = quantile(disp, .75)) %>% 
   mutate(perc.diff = ((Q3 - Q1)/Q3)*100)
 
-#### 4. PLOT DOWNLOADED DATA ####
-
-ggplot()+
-  geom_sf(data = basemap)+
-  geom_sf(data = borders)+
-  geom_point(data = STDB.DL, aes(x = longitude, y = latitude, colour = as.factor(common_name)))+
-  theme_bw()
-
-ggsave(plot = last_plot(), "Map of all locations_all fulfilled data requests_06.03.23.jpg", dpi = 500, height = 10, width = 15)
-
-#### 4a. Plot with different oceans at centre (code from 'Sorting Anne-Sophie datasett script) ####
-
-ALLlocs <- st_as_sf(fullMIG,  coords = c("longitude", "latitude"), crs = 4326)
-ALL_moll <- st_transform(ALLlocs, crs = "+proj=moll")# Changing projections to Mollweide projection
-ALL_robin <- st_transform(ALLlocs, fcrs = "+proj=robin")# Changing projections to Robinson projection
-
-
-world_moll = st_transform(basemap, crs = "+proj=moll")
-borders_moll <- st_transform(borders, crs = "+proj=moll")
-
-world_robin = st_transform(basemap, crs = "+proj=robin")
-borders_robin <- st_transform(borders, crs = "+proj=robin")
-
-# create a colour palette with as many colours as there are species 
-colourCount = length(unique(ALL_moll$common_name))
-getPalette = colorRampPalette(brewer.pal(12, "Paired"))
-
-# Plot all locations (with Greenwich meridian at centre - Atlantic as centre)
-Atl <- ggplot()+
-  # geom_sf(data = world_moll, fill = "#009E73", alpha = 0.5) +
-  geom_sf(data = borders_robin, fill = "#009E73", alpha = 0.3, lwd = 0.2) +
-  geom_sf(data = ALL_robin, aes(colour = common_name), size = 0.6, alpha = 0.3) +
-  scale_colour_manual(values = getPalette(colourCount))+
-  geom_text(aes(label = 'All locations', x = -Inf, y = Inf),
-            hjust = -0.1, vjust = 1.2) +
-  ylab("Latitude")+
-  xlab("Longitude")+
-  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 1.3))) + # override legend so that it isn't transparent
-  theme_bw()
-
-# Now plot with a different map centre
-world <- st_transform(borders, crs = 4326) #start with unprojected data
-# define a long & slim polygon that overlaps the meridian line & set its CRS to match world
-polygon <- st_polygon(x = list(rbind(c(-0.0001, 90),
-                                     c(0, 90),
-                                     c(0, -90),
-                                     c(-0.0001, -90),
-                                     c(-0.0001, 90)))) %>%
-  st_sfc() %>%
-  st_set_crs(4326)
-
-sf_use_s2(FALSE) # this line avoids an error message if there are duplicate polygon edges
-
-# modify world dataset to remove overlapping portions with world's polygons
-world2 <- world %>%  
-  st_difference(polygon)
-
-# project the data
-world_robin <- st_transform(world2, 
-                           crs = '+proj=robin +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs')
-# alternative to mollweide is robinson. replace moll with robin after +proj=
-
-# plot all locations with 180 as centre - Pacific orientation
-Pac <- ggplot() +
-  geom_sf(data = world_robin, fill = "#009E73", alpha = 0.3, lwd = 0.2)+
-  geom_sf(data = ALL_robin, aes(colour = common_name), size = 0.6, alpha = 0.3) +
-  scale_colour_manual(values = getPalette(colourCount))+
-  geom_text(aes(label = 'All locations', x = -Inf, y = Inf),
-            hjust = -0.1, vjust = 1.2) +
-  ylab("Latitude")+
-  xlab("Longitude")+
-  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 1.3, colour = "white"))) + # override legend so that it isn't transparent, also for this plot colour white so it's invisible but same size as previous plot
-  theme_bw()+
-  theme(legend.text = element_text(colour = "white"), 
-        legend.title = element_blank())
-
-
-cowplot::plot_grid(Atl, Pac, nrow = 2)
-
-ggsave(plot = last_plot(), "All data from individuals classified as migrating_Anne-Sophie and fulfilled requests_19.07.2023, 2 parts - centre in Atlantic and Pacific_Robinson proj.jpg", dpi = 500, width = 15, height = 15)
-
-# plot locations on polar projections
-borders_ortho <- st_transform(borders, crs = "+proj=ortho +lat_0=90 +lon_0=0")
-ALL_ortho <- st_transform(ALLlocs, crs = "+proj=ortho +lat_0=90 +lon_0=0")# Changing projections to ortho north polar projection
-
-
-ARCT <- ggplot() +
-  geom_sf(data = borders_ortho, fill = "#009E73", alpha = 0.3) +
-  geom_sf(data = ALL_ortho, aes(colour = common_name), size = 0.6, alpha = 0.3) +
-  scale_colour_manual(values = getPalette(colourCount))+
-  geom_text(aes(label = 'All locations', x = -Inf, y = Inf),
-            hjust = -0.1, vjust = 1.2) +
-  ylab("Latitude")+
-  xlab("Longitude")+
-  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 1.3, colour = "white"))) + # override legend so that it isn't transparent, also for this plot colour white so it's invisible but same size as previous plot
-  theme_bw()+
-  theme(legend.text = element_text(colour = "white", 
-                                   size=rel(0.5)), 
-        legend.title = element_blank(), 
-        legend.key.width = unit(0.3, 'cm'))
-
-# south polar projection
-borders_ortho <- st_transform(borders, crs = "+proj=ortho +lat_0=-90 +lon_0=0")
-ALL_ortho <- st_transform(ALLlocs, crs = "+proj=ortho +lat_0=-90 +lon_0=0")# Changing projections to ortho north polar projection
-
-
-ANTAR <- ggplot() +
-  geom_sf(data = borders_ortho, fill = "#009E73", alpha = 0.3) +
-  geom_sf(data = ALL_ortho, aes(colour = common_name), size = 0.6, alpha = 0.3) +
-  scale_colour_manual(values = getPalette(colourCount))+
-  geom_text(aes(label = 'All locations', x = -Inf, y = Inf),
-            hjust = -0.1, vjust = 1.2) +
-  ylab("Latitude")+
-  xlab("Longitude")+
-  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 1.3))) + # override legend so that it isn't transparent, also for this plot colour white so it's invisible but same size as previous plot
-  theme_bw()+
-  theme(legend.text = element_text(size=rel(0.5)), 
-        legend.key.width = unit(0.3, 'cm')) 
-        
-
-
-cowplot::plot_grid(ARCT, ANTAR, nrow = 2)
-
-ggsave(plot = last_plot(), "All data from individuals classified as migrating_Anne-Sophie and fulfilled requests_19.07.2023, 2 parts - polar projections_Ortho proj.jpg", dpi = 300, width = 12, height = 8)
-
-#### 4b. plot one species at a time and colour code by dataset ID ####
-
-PlotU <- ggplot()+
-  geom_sf(data = basemap)+
-  geom_sf(data = borders) +
-  geom_point(data = STDB.DL[which(STDB.DL$common_name == "Cory's Shearwater"),], # change for species
-             aes(x = longitude, y = latitude, colour = as.factor(bird_id)), alpha = 0.2) +
-  labs(color='Individial ID')  +
-  # xlim(c(30, 120))+
-  # ylim(c(-60, 25))+
-  # scale_colour_discrete(guide = "none")+
-  # scale_color_brewer(palette = "Dark2")+
-  ggtitle("Cory's Shearwater") +
-  theme_bw()
-
-ggsave(plot = PlotU, "./Figures/Requested data_Cory's shearwater.jpg", dpi = 500)
-
-# diff projection
-ggplot()+
-  geom_sf(data = world_moll, fill = "#009E73", alpha = 0.3) +
-  # geom_sf(data = borders_moll, fill = "#009E73", alpha = 0.3, lwd = 0.2) +
-  geom_sf(data = ALL_moll[which(ALL_moll$common_name == "South Polar Skua"),], aes(colour = bird_id), size = 0.6, alpha = 0.3) +
-  geom_text(aes(label = 'South Polar Skua', x = -Inf, y = Inf),
-            hjust = -0.1, vjust = 1.2) +
-  ylab("Latitude")+
-  xlab("Longitude")+
-  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 1.5))) + # override legend so that it isn't transparent
-  theme_bw()+
-  theme(legend.text = element_text(size=rel(0.5))) 
-
-
-ggsave(plot = last_plot(), "./Figures/AnneSo data_south polar skua.jpg", dpi = 500)
 
 #### 5. DATA SUMMMARY ####
 colnames(STDB.DL)
