@@ -13,7 +13,8 @@ library(lubridate)
 # 2. OPENING AND SORTING ALL DATA 
 #    load data downloaded from STDB following data requests
 # 3. FILTERING DATA
-#    3a.
+#    3a. plot tracking and colony locations of each species
+#    3b. calculate displacement from the colony for every individual
 # 4. PLOT DATA
 # 5. SUMMARISE DATA
 # 4b. displacement plots of all data - printed as jpgs to folder
@@ -22,7 +23,6 @@ library(lubridate)
 #### 1. OPEN BASEMAPS ####
 # Open the layers. Once downloaded they will be found in working directory (or wherever you chose to save them) and can be loaded with following line
 basemap <- ne_load(scale = 10, type = 'land', category = "physical", destdir = "./Basemaps/ne_10m_land",  returnclass = c( "sf"))
-# placelabels <- ne_load(scale = 10, type = 'populated_places', destdir = "./Basemaps/ne_10m_populated_places",  returnclass = c( "sf"))
 borders <- ne_load(scale = 10, type = 'countries', destdir = "./Basemaps/ne_10m_countries",  returnclass = c( "sf"))
 
 # plot basemap to check it looks ok
@@ -65,10 +65,11 @@ STDB.DL <- STDB.DL.filt
 unique(STDB.DL$dataset_id[which(is.na(STDB.DL$lat_colony))])
 # dataset 464 from STDB has no lat and lon colony locations - they were caught at sea https://www.publish.csiro.au/mu/pdf/MU9949 
 STDB.DL <- STDB.DL %>% filter((dataset_id != 464)%>% replace_na(TRUE))# remove dataset 464
-  
-# plot for locations and colonies of each species
+
+#### 3a. plot tracking locations and colonies - one plot per species ####
+
 # new dataframe with all unique individuals listed
-species <- data.frame(unique(STDB.DL$common_name)) # should produce same number of displacement plots in the folder using loop below 
+species <- data.frame(unique(STDB.DL$common_name))  
 
 for (j in 1:nrow(species)) { # outer loop to select one individual at a time
   ID <- print(species[j,])
@@ -85,32 +86,16 @@ for (j in 1:nrow(species)) { # outer loop to select one individual at a time
   
 }
 
+#### 3b. calculate and plot the displacement from the colony of all remaining individuals ####
 
-
-#### 3 c. calculate the displacement of all remaining individuals and then further filtering steps follow ####
-# start by calculating displacement and plotting
-# calculating displacement distance
-
-# list all the individuals in another dataframe. 
-# use this dataframe to select one individual in the outer most for loop
-
-#test with smaller dataframe
-STDB.DLsm <- STDB.DL %>% 
-  drop_na(lat_colony) %>% 
-  drop_na(lon_colony) # %>% 
-# arrange(scientific_name, dataset_id, bird_id)%>% # for the smaller subset ensure in correct order as slicing based on row number in next line
-# slice(595000:704239)
-# change from tibble to dataframe
-STDB.DLsm <-  as.data.frame(STDB.DLsm)
+# plotting the displacement of each individual and save to a folder 
 
 # new dataframe with all unique individuals listed
-individuals <- data.frame(unique(STDB.DLsm$track_id)) # 2040 individuals - should produce same number of displacement plots in the folder using loop below 
-# when just adding one dataframe use the following: 
-individuals<- data.frame(unique(STDB.DLsm$track_id[which(STDB.DLsm$dataset_id == "1541")]))
+individuals <- data.frame(unique(STDB.DL$track_id)) # 2040 individuals - should produce same number of displacement plots in the folder using loop below 
 
 for (j in 1:nrow(individuals)) { # outer loop to select one individual at a time
   ID <- print(individuals[j,])
-  subset <- STDB.DLsm %>% filter(track_id == ID)
+  subset <- STDB.DL %>% filter(track_id == ID)
   
   subset$disp <- NA
   
@@ -133,13 +118,12 @@ for (j in 1:nrow(individuals)) { # outer loop to select one individual at a time
     # theme(plot.caption = element_text(vjust = 155)) 
     
   }
-  
-  ggsave(plot = last_plot(), path = "Figures/Displacement plots/extra species", filename=paste("Displacement plot_Bird",ID,".jpg",sep=""), dpi = 200)
-  
-}
+   ggsave(plot = last_plot(), path = "Figures/Displacement plots/extra species", filename=paste("Displacement plot_Bird",ID,".jpg",sep=""), dpi = 200)
+ }
 
 
-# create separate dataframes for individuals with < 12 months, between 12 and 24 months, between 24 and 36 months and > 36 months of data
+##### 3c. filtering steps based displacement - to select indviduals that migrate only ####
+# using displacement to filter datasets for individuals that do migrate. number of time crosses the mid-distance
 
 STDB.DL$disp <- NA
 STDB.DL <- as.data.frame(STDB.DL)
@@ -149,12 +133,9 @@ for (i in 1:nrow(STDB.DL)) {
   print(i)
 }
 
-#### 3g. save / open data frame with all locations filtered up to displacement including column with displacements ####
-write.csv(STDB.DL, "Combined dataset of STDB downloads, A-S, and ARTE_colony displacement calculated_filtering dataset as far as displacement_updated dataset_16May2023.csv", row.names =  FALSE)
-STDB.DL <- read.csv("Combined dataset of STDB downloads, A-S, and ARTE_colony displacement calculated_filtering dataset as far as displacement_updated dataset_16May2023.csv")
 
-write.csv(STDB.DL, "Extra eight species_colony displacement calculated_filtering dataset as far as displacement_updated dataset_18July2023.csv", row.names = FALSE)
-##### 3h. filter by displacement - number of time crosses the mid-distance ####
+# create separate dataframes for individuals with < 12 months of tracking data, between 12 and 24 months, between 24 and 36 months and > 36 months of data
+
 df0.12 <- STDB.DL %>% 
   mutate(POSIX = parse_date_time(paste(date_gmt, time_gmt), c("ymd HMS", "ymd HM"), tz = "UTC")) %>% 
            # as.POSIXct(paste(date_gmt, time_gmt), format = "%Y-%m-%d %H:%M:%S", tz = "UTC")) %>% 
