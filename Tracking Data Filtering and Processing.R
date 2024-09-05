@@ -17,6 +17,7 @@ library(lubridate)
 #    3a. plot tracking locations and colonies - one plot per species
 #    3b. calculate and plot the displacement from the colony of all remaining individuals
 #    3c. filtering steps based displacement - to select indviduals that migrate only
+#    3d. visual assessment of displacement plots for select species. Change reclassified non-migratory individuals
 # 5. SUMMARISE DATA
 # 4b. displacement plots of all data - printed as jpgs to folder
 
@@ -118,7 +119,7 @@ for (j in 1:nrow(individuals)) { # outer loop to select one individual at a time
     # theme(plot.caption = element_text(vjust = 155)) 
     
   }
-   ggsave(plot = last_plot(), path = "Figures/Displacement plots/extra species", filename=paste("Displacement plot_Bird",ID,".jpg",sep=""), dpi = 200)
+   ggsave(plot = last_plot(), path = "Figures/Displacement plots", filename=paste("Displacement plot_Bird",ID,".jpg",sep=""), dpi = 200)
  }
 
 ##### 3c. filtering steps based displacement - to select indviduals that migrate only ####
@@ -220,14 +221,14 @@ subset <- subset[order(subset$POSIX),] # order subset by date
  
 if (num_crossings > 0.1 & num_crossings <=2) { # change from 2 crossings per year to 4 for 12 - 24 months, 6 for 24 - 36 months etc.
 
-  ggsave(plot = disp.plot, path = "Figures/Displacement plots/extra species/migration" , filename = paste("Displacement plot_Bird",ID,"MIGRATION.jpg",sep=""))
+  ggsave(plot = disp.plot, path = "Figures/Displacement plots/migration" , filename = paste("Displacement plot_Bird",ID,"MIGRATION.jpg",sep=""))
   
   MIG <- rbind(MIG, subset)
 
     
 }else {
   
-  ggsave(plot = disp.plot, path = "Figures/Displacement plots/extra species/non-migration" , filename = paste("Displacement plot_Bird",ID,"NON-MIGRATION.jpg",sep=""))
+  ggsave(plot = disp.plot, path = "Figures/Displacement plots/non-migration" , filename = paste("Displacement plot_Bird",ID,"NON-MIGRATION.jpg",sep=""))
   
   NONMIG <- rbind(NONMIG, subset)
 }
@@ -238,17 +239,16 @@ if (num_crossings > 0.1 & num_crossings <=2) { # change from 2 crossings per yea
   
 } # closing outer loop j (selecting one individual at a time from full dataset)
 
+# save data for individuals classified as migratory and non-migratory into two separate csv files
 write.csv(MIG, "data filtered by migration based on displacement plots_MIGRATION.csv", row.names =  FALSE)
 write.csv(NONMIG, "data filtered by migration based on displacement plots_NONMIGRATION.csv", row.names =  FALSE)
 
-MIG <- read.csv("data filtered by migration based on displacement plots_MIGRATION.v4.csv")
-NONMIG <- read.csv("data filtered by migration based on displacement plots_NONMIGRATION.v4.csv")
 
 # check the number of individuals matches the numbers in the two folders of displacement plots
 length(unique(NONMIG$track_id)) 
 length(unique(MIG$track_id))
 
-# check no species are missing
+# check there are no species with no individuals classified as migratory or non-migratory 
 spNONMIG <- data.frame(species = c(unique(NONMIG$common_name)))
 spMIG <- data.frame(species = c(unique(MIG$common_name))) 
 missingsp <- anti_join(spNONMIG, spMIG)
@@ -268,12 +268,12 @@ missingsp <- anti_join(spMIG, spNONMIG)
 
  ind.counts <- full_join(countMIG, countNONMIG)
    
- write.csv(ind.counts, "Figures/Displacement plots/1. number of individuals per species_sorted into mig and nonmig based on displacement plots_eight new species.v5 with colonies.19062023.csv", row.names =  FALSE)
+ write.csv(ind.counts, "Figures/Displacement plots/1. number of individuals per species_sorted into mig and nonmig based on displacement plots.csv", row.names =  FALSE)
 
-#### 3k. visual assessment of displacement plots for select species. Change reclassified non-migratory individuals ####
+#### 3d. visual assessment of displacement plots for select species. Change reclassified non-migratory individuals ####
+# visually check subset of displacement plots (see methods) and create a csv listing any individuals that need to be reclassified from non-migratory to migratory. 
 
 ind2Δ <- read.csv("./Figures/Displacement plots/2. Visual check on individuals from select species classed as non-migratory.csv")
-ind2Δ <- read.csv("./Figures/Displacement plots/2. Visual check on individuals from select species classed as non-migratory_eight new species.csv")
 
 NMtoM <- NONMIG %>% 
   filter(track_id %in% ind2Δ$track_id)
@@ -292,14 +292,9 @@ length(unique(MIG2$track_id)) # number of migrating individuals
 length(unique(NONMIG2$common_name))
 length(unique(MIG2$common_name))
 
-write.csv(MIG2, "data filtered by migration based on displacement plots_MIGRATION.v7_reclassified eight species.csv", row.names =  FALSE)
-write.csv(NONMIG2, "data filtered by migration based on displacement plots_NONMIGRATION.v7_reclassified eight species.csv", row.names =  FALSE)
+write.csv(MIG2, "data filtered by migration based on displacement plots_MIGRATION.v2_reclassified2.csv", row.names =  FALSE)
+write.csv(NONMIG2, "data filtered by migration based on displacement plots_NONMIGRATION.v2_reclassified2.csv", row.names =  FALSE)
 
-
-
-##### Fully FILTERED DATA - OPEN THESE CSVs ####
-MIG <- read.csv("data filtered by migration based on displacement plots_MIGRATION.v5_reclassified.csv")
-NONMIG <- read.csv("data filtered by migration based on displacement plots_NONMIGRATION.v5_reclassified.csv")
 
 #### 3k. write csv of all individuals that need cleaning ####
 
@@ -331,158 +326,3 @@ MIG %>%
   mutate(perc.diff = ((Q3 - Q1)/Q3)*100)
 
 
-#### 5. DATA SUMMMARY ####
-colnames(STDB.DL)
-
-p <- STDB.DL %>% 
-  group_by(scientific_name) %>%
-  count(track_id) %>%
-  mutate(bird_id = as.factor(track_id)) # or change bird_id to originial_track_id
-
-table.summary <- aggregate(data = p, bird_id ~ scientific_name
-          , FUN = length, na.action = na.pass) %>% 
-  rename(sample.size_ind.count = bird_id)
-  
-q <- STDB.DL %>% 
-  group_by(scientific_name) %>% 
-  count(dataset_id) %>% 
-  mutate(dataset_id = as.factor(dataset_id))
-  # summarise(n = n()) %>% # sample size for each species
-
-q2 <- aggregate(data = q, dataset_id ~ scientific_name, 
-                FUN = length, na.action = na.pass) %>% 
-  rename(num.of.STDBprojects = dataset_id)
-
-table.summary <- inner_join(table.summary, q2)
-
-p <- STDB.DL %>% 
-  group_by(scientific_name, sex) %>% 
-  count(original_track_id) %>% # original_track_id
-  mutate(bird_id = as.factor(original_track_id))
-p2 <- aggregate(data = p, bird_id ~ scientific_name + sex, 
-                FUN = length, na.action = na.pass) 
-p3 <- pivot_wider(data = p2, names_from = sex, id_cols = scientific_name, values_from = bird_id ) %>% 
-  rename(sex.female = female, sex.male = male, sex.unknown = unknown) %>% 
-  mutate(sex.female = as.numeric(sex.female), sex.male = as.numeric(sex.male), sex.unknown = as.numeric(sex.unknown)) %>% 
-  mutate_at(c('sex.female','sex.male', 'sex.unknown'), ~replace_na(.,0))
-
-
-table.summary <- merge.data.frame(table.summary,p3,by="scientific_name",all.x=TRUE)
-
-# total numbers of males, females and unknowns and check that this matches the sample size
-for (i in 1:nrow(table.summary)) {
-  table.summary$sex.sum[i] <- table.summary$sex.female[i] + table.summary$sex.male[i] + table.summary$sex.unknown[i]
-}
-
-
-q <- STDB.DL %>% 
-  group_by(scientific_name, age) %>% 
-  count(original_track_id) %>% #original_track_id
-  mutate(bird_id = as.factor(original_track_id))
-q2 <- aggregate(data = q, bird_id ~ scientific_name + age, 
-                FUN = length, na.action = na.pass)
-q3 <- pivot_wider(data = q2, names_from = age, id_cols = scientific_name, values_from = bird_id) %>%
-  rename(age.adult = adult, age.immature = immature, age.juvenile = juvenile, age.unknown = unknown) %>% 
-  mutate(age.adult = as.numeric(age.adult), age.immature = as.numeric(age.immature), age.juvenile = as.numeric(age.juvenile), age.unknown = as.numeric(age.unknown)) %>% 
-  mutate_at(c('age.adult', 'age.immature', 'age.juvenile', 'age.unknown'), ~replace_na(.,0))
-
-
-table.summary <- merge.data.frame(table.summary,q3,by="scientific_name",all.x=TRUE)
-
-# total numbers of adults, immatures, juveniles and unknowns and check that this matches the sample size
-for (i in 1:nrow(table.summary)) {
-  table.summary$age.sum[i] <- table.summary$age.adult[i] + table.summary$age.immature[i] + table.summary$age.juvenile[i]+ table.summary$age.unknown[i]
-}
-
-table.summary[37,] = c("Total", colSums(table.summary[,2:12])) # change the row number depending on the number of rows in table.summary. Should be nrow+1 to make new total row
-
-
-# total numbers of individuals grouped by device type
-AA <- tracks %>% # make a dataframe only keeping one row of each individual (tracks might be MIG or whatever else has all the individuals)
-       group_by(track_id, device) %>% 
-       filter(row_number() == 1)
- AA %>% 
-       group_by( device) %>%
-       summarise(number = n()) # summarise based on device type (bettter than aggregate)
-
-#### 5a.  What proportion of individuals have a full migration cycle? ####
-
-
-
-# Have Anne-Sophie or Marie cleaned these data?
-
-# add a column fpr if dataset was requested through the plastics work (so Marie may have cleaned and labelled)
-
-STDB.DL$Req.for.plastics<- ifelse(STDB.DL$dataset_id %in% c(464, 517, 518, 555, 561, 627, 635, 639, 
-                                                            663, 683, 705, 706, 888, 708, 710, 712, 
-                                                            739, 858, 883, 884, 885, 886, 889, 891, 
-                                                            715, 892, 971, 973, 977, 978, 982, 1110, 
-                                                            1295, 1318, 1319, 1320, 1321, 1322, 1413, 
-                                                            1450, 1485, 1486, 1487, 1579, 1580, 1581, 
-                                                            1603, 1692, 1704), "Yes", "No")
-
-q <- STDB.DL %>% 
-  group_by(dataset_id, Req.for.plastics, scientific_name, AS) %>% 
-  count(bird_id)# %>% 
-  mutate(dataset_id = as.factor(bird_id))
-q2 <- aggregate(data = q, bird_id ~ scientific_name + Req.for.plastics +AS, 
-                FUN = length, na.action = na.pass)
-
-plastics <- pivot_wider(data = q2, names_from = c(Req.for.plastics, AS), 
-                        id_cols = scientific_name, values_from = bird_id) %>% 
-  rename(Req.for.plastics.NO.AS.NO = No_No, Req.for.plastics.YES.AS.NO = Yes_No, Req.for.plastics.NO.AS.YES = No_Yes) %>% 
-  mutate(Req.for.plastics.NO.AS.NO = as.numeric(Req.for.plastics.NO.AS.NO), 
-         Req.for.plastics.YES.AS.NO = as.numeric(Req.for.plastics.YES.AS.NO), 
-         Req.for.plastics.NO.AS.YES = as.numeric(Req.for.plastics.NO.AS.YES)) %>% 
-  mutate_at(c('Req.for.plastics.NO.AS.NO', 'Req.for.plastics.YES.AS.NO', 'Req.for.plastics.NO.AS.YES'), 
-            ~replace_na(.,0)) 
-
-plastics$proportionMar <- NA
-plastics$proportionAS <- NA
-for (i in 1:nrow(plastics)) {
-  
-   sum = sum(plastics$Req.for.plastics.NO.AS.NO[i] + plastics$Req.for.plastics.YES.AS.NO[i] + plastics$Req.for.plastics.NO.AS.YES[i])
-   
-  p <- (plastics$Req.for.plastics.YES.AS.NO[i] / sum)*100
-   
-   plastics[i,5] <- p
-   
-   q = (plastics$Req.for.plastics.NO.AS.YES[i] / sum)*100
-   
-   plastics[i,6] <- q
-  
-}
-
-plastics$total <- (plastics$proportionMar + plastics$proportionAS)
-
-write.csv(plastics, "Proportion of bird datasets requested for plastics or cleaned by AS.csv", row.names = FALSE)
-
-
-# ACAP species 
-
-ACAP <- STDB.DL %>% filter(common_name == "Wandering Albatross"  | common_name =="Grey-headed Albatross" | 
-                             common_name == "Black-browed Albatross" | common_name == "Spectacled Petrel" | 
-                             common_name == "Westland Petrel" | common_name == "White-chinned Petrel")
-
-aggregate(data = ACAP, track_id ~ common_name, function(track_id)length(unique(track_id)))
-
-# common_name         number of individuals
-# 1 Black-browed Albatross      127
-# 2  Grey-headed Albatross       25
-# 3      Spectacled Petrel        8
-# 4    Wandering Albatross      443
-# 5        Westland Petrel        8
-# 6   White-chinned Petrel       50
-
-ACAP %>% group_by(common_name) %>% summarise(count = n_distinct(track_id)) # does the same as above
-
-# how many studies were listed on STDB?
-ACAP %>% group_by(dataset_id, common_name) %>% summarise(count= n_distinct(track_id))
-
-# how many locations recorded by each technology
-STDB.DL %>%  group_by(device) %>% summarise(count = n_distinct(latitude))
-
-ggplot()+
-  geom_sf(data = borders)+
-  geom_point( data = ACAP, aes(x = longitude, y = latitude) ) +
-  facet_wrap(~common_name)
