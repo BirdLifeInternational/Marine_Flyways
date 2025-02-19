@@ -1,6 +1,6 @@
 # Marine_Flyways
 
-Morten et al. (In Review) Global marine flyways identified for long-distance migrating pelagic seabirds from multi-species tracking data 
+Morten, J.M., Carneiro, A.P.B., Beal, M., Bonnet-Lebrun, A.-S., Dias, M.P., Rouyer, M.-M., (...) and Davies, T.E. (2025), Global Marine Flyways Identified for Long-Distance Migrating Seabirds From Tracking Data. Global Ecology Biogeography, 34: e70004. https://doi.org/10.1111/geb.70004
 
 The marine flyways can be viewed via the Seabird Tracking Database: https://www.seabirdtracking.org/case-studies/marine-flyways/
 ![Flyways Infographics-Global_twitter res](https://github.com/user-attachments/assets/f4f63867-3420-4eb6-a614-c04fa10fa031)
